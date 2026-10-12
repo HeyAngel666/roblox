@@ -12,11 +12,12 @@ local lib = require("./lib")
 local swords = require("./swords")
 local characters = require("./characters")
 local map = require("./map")
+local dragons = require("./dragons")
 local Config = require("../src/shared/Config")
 
 local Instance, Enum = lib.Instance, lib.Enum
 
-local OUTPUT = "LaminasDoReino.rbxlx"
+local OUTPUT = "LaminasDoReino.rbxl"
 local SOURCE_ATTRIBUTE = "__SourcePath"
 
 local game = Instance.new("DataModel")
@@ -74,27 +75,52 @@ starterPlayerScripts.Parent = StarterPlayer
 local starterCharacterScripts = Instance.new("StarterCharacterScripts")
 starterCharacterScripts.Parent = StarterPlayer
 
--- Iluminação
-Lighting.ClockTime = 13
-Lighting.Brightness = 2.5
-Lighting.Ambient = lib.rgb(70, 70, 82)
-Lighting.OutdoorAmbient = lib.rgb(125, 125, 135)
+-- Iluminação (visual mais bonito: luz "Future", névoa, brilho, raios de sol)
+Lighting.ClockTime = 14
+Lighting.Brightness = 3
+Lighting.Ambient = lib.rgb(80, 80, 95)
+Lighting.OutdoorAmbient = lib.rgb(135, 135, 150)
+Lighting.ColorShift_Top = lib.rgb(255, 245, 225)
 Lighting.GlobalShadows = true
-Lighting.Technology = Enum.Technology.ShadowMap
-Lighting.EnvironmentDiffuseScale = 0.5
-Lighting.EnvironmentSpecularScale = 0.5
+Lighting.Technology = Enum.Technology.Future
+Lighting.EnvironmentDiffuseScale = 0.6
+Lighting.EnvironmentSpecularScale = 0.6
+Lighting.ShadowSoftness = 0.25
 lib.new("Atmosphere", {
-	Density = 0.3,
-	Offset = 0.2,
-	Color = lib.rgb(199, 205, 220),
-	Decay = lib.rgb(106, 112, 125),
-	Glare = 0.3,
-	Haze = 1.2,
+	Density = 0.33,
+	Offset = 0.25,
+	Color = lib.rgb(205, 215, 235),
+	Decay = lib.rgb(100, 110, 135),
+	Glare = 0.4,
+	Haze = 1.6,
 }, Lighting)
-lib.new("Sky", { Name = "Ceu" }, Lighting)
-lib.new("BloomEffect", { Intensity = 0.5, Size = 24, Threshold = 1.5 }, Lighting)
-lib.new("ColorCorrectionEffect", { Saturation = 0.12, Contrast = 0.08, Brightness = 0.02 }, Lighting)
-lib.new("SunRaysEffect", { Intensity = 0.06, Spread = 0.8 }, Lighting)
+lib.new("Sky", {
+	Name = "Ceu",
+	SunAngularSize = 14,
+	MoonAngularSize = 10,
+	StarCount = 4000,
+}, Lighting)
+lib.new("BloomEffect", { Intensity = 0.7, Size = 28, Threshold = 1.3 }, Lighting)
+lib.new("ColorCorrectionEffect", {
+	Name = "CorDoDia",
+	Saturation = 0.18,
+	Contrast = 0.1,
+	Brightness = 0.02,
+	TintColor = lib.rgb(255, 248, 240),
+}, Lighting)
+lib.new("SunRaysEffect", { Intensity = 0.08, Spread = 0.7 }, Lighting)
+lib.new("DepthOfFieldEffect", { FarIntensity = 0.12, FocusDistance = 120, InFocusRadius = 220, NearIntensity = 0 }, Lighting)
+
+-- Terreno (o relevo é criado pelo servidor; aqui só as configurações)
+local terrain = Instance.new("Terrain")
+terrain.Decoration = true
+terrain.WaterColor = lib.rgb(45, 125, 160)
+terrain.WaterReflectance = 0.6
+terrain.WaterTransparency = 0.55
+terrain.WaterWaveSize = 0.18
+terrain.WaterWaveSpeed = 8
+terrain.Parent = Workspace
+lib.new("Clouds", { Cover = 0.55, Density = 0.65, Color = lib.rgb(255, 255, 255) }, terrain)
 
 --------------------------------------------------------------------------
 -- ReplicatedStorage
@@ -152,13 +178,31 @@ addScript(ServerScriptService, "Script", "GameServer", "src/server/GameServer.se
 local services = lib.folder(ServerScriptService, "Services")
 addModulesFrom(services, "src/server/Services")
 
+addScript(game:GetService("ReplicatedFirst"), "LocalScript", "Carregamento", "src/client/Loading.client.luau")
 local clientMain = addScript(starterPlayerScripts, "LocalScript", "ClientMain", "src/client/ClientMain/init.client.luau")
 addModulesFrom(clientMain, "src/client/ClientMain", "init.client.luau")
 
 --------------------------------------------------------------------------
 -- Mapa
 --------------------------------------------------------------------------
-map.build(game)
+local terrainSource = map.build(game)
+local terrainData = Instance.new("ModuleScript")
+terrainData.Name = "TerrainData"
+terrainData.Source = terrainSource
+terrainData.Parent = ServerStorage
+
+-- Dragões (modelo do Blender convertido em peças)
+local dragonFolder = lib.folder(Workspace, "Dragoes")
+local dragonDefs = {
+	{ Name = "Ignis", Palette = "red", Scale = 1.5, Center = lib.Vector3.new(0, 0, -110), Radius = 175, Altitude = 95, Speed = 34, Phase = 0.4, Direction = 1, FlapSpeed = 2.3 },
+	{ Name = "Verdantis", Palette = "green", Scale = 1.3, Center = lib.Vector3.new(265, 0, 0), Radius = 115, Altitude = 75, Speed = 28, Phase = 2.1, Direction = -1, FlapSpeed = 2.6 },
+	{ Name = "Umbra", Palette = "shadow", Scale = 1.75, Center = lib.Vector3.new(-265, 0, 0), Radius = 90, Altitude = 70, Speed = 26, Phase = 4.0, Direction = 1, FlapSpeed = 2.0 },
+}
+for _, def in dragonDefs do
+	local model, triangles = dragons.build(def)
+	model.Parent = dragonFolder
+	print(("Dragão %s: %d peças"):format(def.Name, triangles))
+end
 
 --------------------------------------------------------------------------
 -- Sourcemap (usado só para checagem de tipos com luau-lsp)
@@ -196,7 +240,7 @@ end
 --------------------------------------------------------------------------
 -- Salva
 --------------------------------------------------------------------------
-fs.writeFile(OUTPUT, roblox.serializePlace(game, true))
+fs.writeFile(OUTPUT, roblox.serializePlace(game, false))
 
 local parts = 0
 for _, instance in game:GetDescendants() do

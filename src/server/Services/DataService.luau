@@ -251,6 +251,7 @@ function DataService.AddXP(player: Player, amount: number)
 
 	if leveledUp then
 		Remotes.Notify:FireClient(player, {
+			Style = "LevelUp",
 			Text = "NÍVEL " .. data.Level .. "!",
 			Sub = "Vida máxima aumentada",
 			Color = { 255, 215, 80 },

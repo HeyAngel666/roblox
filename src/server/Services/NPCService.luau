@@ -84,7 +84,7 @@ function NPCService.CreateBillboard(model: Model, title: string, isBoss: boolean
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.new(1, 0, 0, 22)
-	label.Font = Enum.Font.GothamBlack
+	label.Font = Enum.Font.LuckiestGuy
 	label.TextScaled = true
 	label.Text = title
 	label.TextColor3 = isBoss and Color3.fromRGB(255, 80, 90) or Color3.fromRGB(255, 255, 255)
@@ -115,6 +115,10 @@ function NPCService.CreateBillboard(model: Model, title: string, isBoss: boolean
 	local fillCorner = Instance.new("UICorner")
 	fillCorner.CornerRadius = UDim.new(1, 0)
 	fillCorner.Parent = fill
+	local fillGradient = Instance.new("UIGradient")
+	fillGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150))
+	fillGradient.Rotation = 90
+	fillGradient.Parent = fill
 
 	gui.Parent = head
 

@@ -132,6 +132,7 @@ local function onPlayerDied(player: Player, humanoid: Humanoid)
 	})
 
 	Remotes.Notify:FireClient(player, {
+		Style = "Death",
 		Text = "VOCÊ CAIU",
 		Sub = killerName and ("Derrotado por " .. killerName) or "Levante-se, guerreiro!",
 		Color = { 255, 70, 70 },

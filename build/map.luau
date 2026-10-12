@@ -286,6 +286,91 @@ local function npcSpawn(parent, kind, position)
 end
 
 --------------------------------------------------------------------------
+-- RELEVO (o terreno de verdade é criado pelo servidor ao iniciar o jogo,
+-- usando estes dados: morros, lago, montanhas e manchas de material)
+--------------------------------------------------------------------------
+local terrainData = {
+	Hills = {},
+	Mountains = {},
+	Lake = { X = 120, Z = 175, Radius = 42 },
+	Patches = {},
+}
+
+local function heightAt(x, z)
+	local h = 0
+	for _, hill in terrainData.Hills do
+		local dx, dz = x - hill[1], z - hill[3]
+		local d2 = dx * dx + dz * dz
+		if d2 < hill[4] * hill[4] then
+			h = math.max(h, hill[2] + math.sqrt(hill[4] * hill[4] - d2))
+		end
+	end
+	return h
+end
+
+local function generateRelief()
+	-- Montanhas em volta do mapa
+	for i = 0, 47 do
+		local a = rad(i * 7.5 + rand(-2, 2))
+		local radius = rand(495, 540)
+		local size = rand(70, 115)
+		table.insert(terrainData.Mountains, {
+			math.floor(math.cos(a) * radius),
+			math.floor(rand(-size * 0.45, -size * 0.1)),
+			math.floor(math.sin(a) * radius),
+			math.floor(size),
+			math.random() < 0.7,
+		})
+	end
+	-- Morros suaves nos campos
+	local tries = 0
+	while #terrainData.Hills < 22 and tries < 2000 do
+		tries += 1
+		local r = rand(40, 85)
+		local footprint = r * 0.63
+		local x, z = rand(-430, 430), rand(-430, 430)
+		if isFree(x, z, footprint + 6) and math.abs(x) < 450 and math.abs(z) < 450 then
+			table.insert(terrainData.Hills, { math.floor(x), math.floor(-r * 0.78), math.floor(z), math.floor(r) })
+			block(x, z, footprint * 0.35)
+		end
+	end
+	-- Lava rachada perto das ruínas
+	for i = 0, 6 do
+		local a = rad(i * 51 + rand(-10, 10))
+		local d = rand(54, 72)
+		if not angleNear(i * 51, 0, 20) then
+			table.insert(terrainData.Patches, { -265 + math.floor(math.cos(a) * d), math.floor(math.sin(a) * d), math.floor(rand(5, 9)), "CrackedLava" })
+		end
+	end
+end
+
+local function terrainModule(): string
+	local lines = { "-- Gerado pelo build (build/map.luau). Usado pelo TerrainService.", "return {" }
+	local function list(name, rows)
+		table.insert(lines, "\t" .. name .. " = {")
+		for _, row in rows do
+			local items = {}
+			for _, value in row do
+				if type(value) == "string" then
+					table.insert(items, '"' .. value .. '"')
+				else
+					table.insert(items, tostring(value))
+				end
+			end
+			table.insert(lines, "\t\t{ " .. table.concat(items, ", ") .. " },")
+		end
+		table.insert(lines, "\t},")
+	end
+	list("Hills", terrainData.Hills)
+	list("Mountains", terrainData.Mountains)
+	list("Patches", terrainData.Patches)
+	local lake = terrainData.Lake
+	table.insert(lines, ("\tLake = { X = %d, Z = %d, Radius = %d },"):format(lake.X, lake.Z, lake.Radius))
+	table.insert(lines, "}")
+	return table.concat(lines, "\n") .. "\n"
+end
+
+--------------------------------------------------------------------------
 -- TERRENO BASE
 --------------------------------------------------------------------------
 local function buildTerrain(world)
@@ -313,31 +398,6 @@ local function buildTerrain(world)
 		})
 	end
 
-	-- Montanhas ao redor
-	local mountains = lib.folder(folder, "Montanhas")
-	for i = 0, 55 do
-		local a = rad(i * (360 / 56) + rand(-2, 2))
-		local radius = rand(445, 480)
-		local size = rand(70, 130)
-		local position = V3(math.cos(a) * radius, size * 0.25, math.sin(a) * radius)
-		lib.part(mountains, {
-			Name = "Montanha",
-			Size = V3(size, size * rand(0.8, 1.4), size * rand(0.8, 1.2)),
-			CFrame = CF(position) * CFrame.Angles(rad(rand(-20, 20)), rad(rand(0, 360)), rad(rand(-20, 20))),
-			Color = pick({ { 110, 105, 100 }, { 100, 95, 92 }, { 120, 115, 105 } }),
-			Material = "Rock",
-		})
-		if math.random() < 0.6 then
-			-- Neve no topo
-			lib.part(mountains, {
-				Name = "Neve",
-				Size = V3(size * 0.45, size * 0.3, size * 0.45),
-				CFrame = CF(position + V3(0, size * 0.55, 0)) * CFrame.Angles(0, rad(rand(0, 360)), 0),
-				Color = { 240, 245, 250 },
-				Material = "Snow",
-			})
-		end
-	end
 end
 
 --------------------------------------------------------------------------
@@ -1081,6 +1141,51 @@ local function buildRuins(world, server)
 		end
 	end
 
+	-- Cristais sombrios brilhantes
+	local crystals = lib.folder(ruins, "Cristais")
+	for i = 0, 7 do
+		local a = rad(i * 45 + 20)
+		if not angleNear(i * 45 + 20, 0, 25) then
+			local d = i % 2 == 0 and rand(50, 56) or rand(26, 32)
+			local base = V3(center.X + math.cos(a) * d, i % 2 == 0 and 0 or 0.8, center.Z + math.sin(a) * d)
+			local cluster = lib.model(crystals, "Cristal")
+			for k = 1, 5 do
+				local height = rand(3, 8) * (k == 1 and 1.5 or 1)
+				local width = height * 0.28
+				lib.part(cluster, {
+					Name = "Cristal",
+					Size = V3(width, height, width),
+					CFrame = CF(base + V3(rand(-1.5, 1.5), height * 0.4, rand(-1.5, 1.5)))
+						* CFrame.Angles(rad(rand(-25, 25)), rad(rand(0, 90)), rad(rand(-25, 25)))
+						* CFrame.Angles(0, rad(45), 0),
+					Color = pick({ { 160, 60, 255 }, { 120, 40, 220 }, { 200, 90, 255 } }),
+					Material = "Neon",
+					Transparency = 0.15,
+				})
+			end
+			lib.light(cluster:FindFirstChild("Cristal"), { Color = lib.rgb(170, 70, 255), Range = 16, Brightness = 1.5 })
+		end
+	end
+
+	-- Obeliscos com runas na entrada
+	for _, side in { -1, 1 } do
+		local base = center + V3(56, 0, side * 16)
+		local obelisk = lib.model(ruins, "Obelisco")
+		lib.part(obelisk, { Name = "Base", Size = V3(5, 1.5, 5), CFrame = CF(base + V3(0, 0.75, 0)), Color = { 70, 68, 80 }, Material = "Slate" })
+		lib.part(obelisk, { Name = "Pedra", Size = V3(3, 16, 3), CFrame = CF(base + V3(0, 9.5, 0)), Color = { 55, 52, 65 }, Material = "Slate" })
+		lib.part(obelisk, { Name = "Ponta", Size = V3(2.1, 2.1, 2.1), CFrame = CF(base + V3(0, 17.8, 0)) * CFrame.Angles(rad(45), 0, rad(45)), Color = { 55, 52, 65 }, Material = "Slate" })
+		for k = 0, 3 do
+			lib.part(obelisk, {
+				Name = "Runa",
+				Size = V3(0.6, 1.6, 0.2),
+				CFrame = CF(base + V3(1.55, 5 + k * 3, 0)) * CFrame.Angles(0, rad(90), 0),
+				Color = { 220, 30, 50 },
+				Material = "Neon",
+			})
+		end
+		lib.light(obelisk:FindFirstChild("Pedra"), { Color = lib.rgb(255, 40, 60), Range = 14, Brightness = 1 })
+	end
+
 	-- Inimigos
 	npcSpawn(server.NPCSpawns, "ReiCaido", center + V3(-8, 0.7, 0))
 	npcSpawn(server.NPCSpawns, "Esqueleto", V3(-200, 0, 22))
@@ -1105,14 +1210,14 @@ local function buildFields(world)
 		local x, z = rand(-420, 420), rand(-420, 420)
 		if isFree(x, z, 6) then
 			block(x, z, 7)
-			tree(fields, V3(x, 0, z))
+			tree(fields, V3(x, heightAt(x, z) - 0.4, z))
 			count += 1
 		end
 	end
 	for _ = 1, 60 do
 		local x, z = rand(-420, 420), rand(-420, 420)
 		if isFree(x, z, 3) then
-			rock(fields, V3(x, 0, z))
+			rock(fields, V3(x, heightAt(x, z) - 0.3, z))
 		end
 	end
 	local flowers = { { 255, 90, 110 }, { 255, 220, 80 }, { 200, 120, 255 }, { 255, 255, 255 }, { 255, 150, 60 } }
@@ -1125,7 +1230,7 @@ local function buildFields(world)
 					Name = "Flor",
 					Shape = "Ball",
 					Size = V3(0.7, 0.7, 0.7),
-					CFrame = CF(x + rand(-2, 2), 0.35, z + rand(-2, 2)),
+					CFrame = CF(x + rand(-2, 2), heightAt(x, z) + 0.2, z + rand(-2, 2)),
 					Color = color,
 					Material = "SmoothPlastic",
 					CanCollide = false,
@@ -1138,6 +1243,374 @@ local function buildFields(world)
 		lib.part(fields, { Name = "Cerca", Size = V3(0.5, 3, 0.5), CFrame = CF(-75 - i * 14, 1.5, 14), Color = { 110, 80, 50 }, Material = "Wood" })
 		lib.part(fields, { Name = "CercaBarra", Size = V3(14, 0.4, 0.3), CFrame = CF(-82 - i * 14, 2.3, 14), Color = { 110, 80, 50 }, Material = "Wood" })
 	end
+end
+
+--------------------------------------------------------------------------
+-- CASAS, MERCADO E ENFEITES DA VILA
+--------------------------------------------------------------------------
+local function house(parent, position, yaw: number, roofColor, wallColor)
+	local model = lib.model(parent, "Casa")
+	local base = CF(position) * CFrame.Angles(0, rad(yaw), 0)
+	local W, D, H = 14, 12, 9
+	local wall = wallColor or { 235, 225, 200 }
+	local wood = { 85, 55, 35 }
+	local function p(props, offset)
+		props.CFrame = base * offset
+		return lib.part(model, props)
+	end
+
+	p({ Name = "Alicerce", Size = V3(W + 1.2, 1.2, D + 1.2), Color = { 130, 125, 118 }, Material = "Cobblestone" }, CF(0, 0.4, 0))
+	-- Paredes
+	p({ Name = "Parede", Size = V3(W, H, 0.8), Color = wall, Material = "Concrete" }, CF(0, 1 + H / 2, -D / 2 + 0.4))
+	p({ Name = "Parede", Size = V3(W, H, 0.8), Color = wall, Material = "Concrete" }, CF(0, 1 + H / 2, D / 2 - 0.4))
+	for _, side in { -1, 1 } do
+		p({ Name = "Parede", Size = V3(0.8, H, D - 1.6), Color = wall, Material = "Concrete" }, CF(side * (W / 2 - 0.4), 1 + H / 2, 0))
+	end
+	-- Enxaimel (vigas de madeira)
+	for _, x in { -W / 2, W / 2 } do
+		for _, z in { -D / 2, D / 2 } do
+			p({ Name = "Viga", Size = V3(0.9, H, 0.9), Color = wood, Material = "Wood" }, CF(x, 1 + H / 2, z))
+		end
+	end
+	for _, z in { -D / 2 - 0.05, D / 2 + 0.05 } do
+		p({ Name = "Viga", Size = V3(W, 0.6, 0.9), Color = wood, Material = "Wood" }, CF(0, 1 + H * 0.52, z))
+		p({ Name = "Viga", Size = V3(W, 0.6, 0.9), Color = wood, Material = "Wood" }, CF(0, 1 + H - 0.3, z))
+	end
+	for _, side in { -1, 1 } do
+		p({ Name = "Diagonal", Size = V3(0.5, 5.6, 0.3), Color = wood, Material = "Wood" },
+			CF(side * (W / 2 - 1.6), 1 + H * 0.76, -D / 2 - 0.5) * CFrame.Angles(0, 0, rad(side * 35)))
+	end
+	-- Porta
+	p({ Name = "Porta", Size = V3(3, 5, 0.3), Color = { 100, 60, 35 }, Material = "WoodPlanks" }, CF(0, 3.5, -D / 2 - 0.1))
+	p({ Name = "Macaneta", Shape = "Ball", Size = V3(0.35, 0.35, 0.35), Color = { 220, 180, 60 }, Material = "Metal" }, CF(1, 3.5, -D / 2 - 0.35))
+	p({ Name = "Degrau", Size = V3(4, 0.5, 1.6), Color = { 130, 125, 118 }, Material = "Cobblestone" }, CF(0, 0.25, -D / 2 - 1.2))
+	-- Janelas (acendem à noite)
+	local windows = {
+		CF(-4.3, 6.2, -D / 2 - 0.15), CF(4.3, 6.2, -D / 2 - 0.15),
+		CF(-W / 2 - 0.15, 6.2, 0) * CFrame.Angles(0, rad(90), 0),
+		CF(W / 2 + 0.15, 6.2, 0) * CFrame.Angles(0, rad(90), 0),
+	}
+	for i, offset in windows do
+		p({ Name = "Janela", Size = V3(2.4, 2.4, 0.2), Color = { 255, 205, 120 }, Material = "SmoothPlastic", Tags = { "NightLight" } }, offset)
+		p({ Name = "Moldura", Size = V3(2.9, 0.3, 0.35), Color = wood, Material = "Wood" }, offset * CF(0, 1.3, 0))
+		p({ Name = "Moldura", Size = V3(2.9, 0.3, 0.35), Color = wood, Material = "Wood" }, offset * CF(0, -1.3, 0))
+		p({ Name = "Cruz", Size = V3(0.2, 2.4, 0.3), Color = wood, Material = "Wood" }, offset)
+		p({ Name = "Cruz", Size = V3(2.4, 0.2, 0.3), Color = wood, Material = "Wood" }, offset)
+		if i <= 2 then
+			-- Floreira embaixo da janela
+			p({ Name = "Floreira", Size = V3(2.8, 0.6, 0.8), Color = { 110, 70, 40 }, Material = "Wood" }, offset * CF(0, -1.75, -0.4))
+			for k = -1, 1 do
+				p({ Name = "Flor", Shape = "Ball", Size = V3(0.6, 0.6, 0.6), Color = pick({ { 255, 90, 110 }, { 255, 220, 80 }, { 200, 120, 255 } }), Material = "SmoothPlastic", CanCollide = false },
+					offset * CF(k * 0.8, -1.25, -0.4))
+			end
+		end
+	end
+	-- Telhado de duas águas
+	local hd, angle = D / 2 + 1, rad(35)
+	local slope = hd / math.cos(angle)
+	local ridge = hd * math.tan(angle)
+	p({ Name = "Telhado", Size = V3(W + 2.4, 0.7, slope + 0.4), Color = roofColor, Material = "Slate" },
+		CF(0, 1 + H + ridge / 2, -hd / 2) * CFrame.Angles(-angle, 0, 0))
+	p({ Name = "Telhado", Size = V3(W + 2.4, 0.7, slope + 0.4), Color = roofColor, Material = "Slate" },
+		CF(0, 1 + H + ridge / 2, hd / 2) * CFrame.Angles(angle, 0, 0))
+	p({ Name = "Cumeeira", Size = V3(W + 2.6, 0.6, 0.9), Color = { 60, 45, 35 }, Material = "Wood" }, CF(0, 1 + H + ridge + 0.1, 0))
+	-- Oitões (triângulos das laterais)
+	local gable = (D / 2) * math.tan(angle)
+	for _, side in { -1, 1 } do
+		p({ Class = "WedgePart", Name = "Oitao", Size = V3(0.8, gable, D / 2), Color = wall, Material = "Concrete" },
+			CF(side * (W / 2 - 0.4), 1 + H + gable / 2, -D / 4))
+		p({ Class = "WedgePart", Name = "Oitao", Size = V3(0.8, gable, D / 2), Color = wall, Material = "Concrete" },
+			CF(side * (W / 2 - 0.4), 1 + H + gable / 2, D / 4) * CFrame.Angles(0, math.pi, 0))
+	end
+	-- Chaminé com fumaça
+	local chimney = p({ Name = "Chamine", Size = V3(1.8, 6, 1.8), Color = { 140, 80, 60 }, Material = "Brick" }, CF(W / 2 - 3, 1 + H + 3.5, 2.5))
+	local smoke = Instance.new("Smoke")
+	smoke.Opacity = 0.12
+	smoke.RiseVelocity = 3
+	smoke.Size = 2.5
+	smoke.Color = lib.rgb(220, 220, 220)
+	smoke.Parent = chimney
+	-- Lanterna na porta
+	local lantern = p({ Name = "Lanterna", Size = V3(0.7, 0.9, 0.7), Color = { 255, 200, 120 }, Material = "Neon", Tags = { "NightLight" } }, CF(-2.3, 6.2, -D / 2 - 0.6))
+	lib.light(lantern, { Color = lib.rgb(255, 190, 110), Range = 14, Brightness = 1.2 }, { "NightLight" })
+	block(position.X, position.Z, 13)
+	return model
+end
+
+local function marketStall(parent, position, yaw: number, colorA, colorB, goods)
+	local model = lib.model(parent, "Barraca")
+	local base = CF(position) * CFrame.Angles(0, rad(yaw), 0)
+	local wood = { 120, 80, 45 }
+	local function p(props, offset)
+		props.CFrame = base * offset
+		return lib.part(model, props)
+	end
+	for _, x in { -3.6, 3.6 } do
+		for _, z in { -2, 2 } do
+			p({ Name = "Poste", Size = V3(0.4, z < 0 and 6 or 7, 0.4), Color = wood, Material = "Wood" }, CF(x, z < 0 and 3 or 3.5, z))
+		end
+	end
+	p({ Name = "Balcao", Size = V3(7.4, 2.6, 2.2), Color = wood, Material = "WoodPlanks" }, CF(0, 1.3, -1.4))
+	-- Toldo listrado
+	for i = 0, 7 do
+		p({
+			Name = "Toldo",
+			Size = V3(1, 0.15, 5.4),
+			Color = i % 2 == 0 and colorA or colorB,
+			Material = "Fabric",
+		}, CF(-3.5 + i, 6.75, -0.1) * CFrame.Angles(rad(-10), 0, 0))
+	end
+	for i = 0, 7 do
+		p({ Class = "WedgePart", Name = "Franja", Size = V3(1, 0.7, 0.15), Color = i % 2 == 0 and colorA or colorB, Material = "Fabric" },
+			CF(-3.5 + i, 5.95, -2.85) * CFrame.Angles(0, 0, math.pi))
+	end
+	-- Mercadorias
+	for i = 1, 9 do
+		p({
+			Name = "Fruta",
+			Shape = "Ball",
+			Size = V3(0.7, 0.7, 0.7),
+			Color = pick(goods),
+			Material = "SmoothPlastic",
+			CanCollide = false,
+		}, CF(rand(-3, 3), 2.95, rand(-2.1, -0.8)))
+	end
+	p({ Name = "Barril", Shape = "Cylinder", Size = V3(2, 1.8, 1.8), Color = { 110, 70, 40 }, Material = "Wood" }, CF(4.8, 1, 1) * CFrame.Angles(0, 0, rad(90)))
+	p({ Name = "Caixa", Size = V3(1.6, 1.6, 1.6), Color = { 150, 110, 65 }, Material = "WoodPlanks" }, CF(-4.8, 0.8, 0.8) * CFrame.Angles(0, rad(20), 0))
+	return model
+end
+
+-- Varal de bandeirinhas entre dois pontos (com curva)
+local function bunting(parent, a, b, colors)
+	local model = lib.model(parent, "Bandeirinhas")
+	local count = math.floor((b - a).Magnitude / 3.2)
+	local points = {}
+	for i = 0, count do
+		local t = i / count
+		local point = a:Lerp(b, t) - V3(0, math.sin(t * math.pi) * 3.5, 0)
+		table.insert(points, point)
+	end
+	for i = 1, #points - 1 do
+		local p0, p1 = points[i], points[i + 1]
+		lib.part(model, {
+			Name = "Corda",
+			Size = V3(0.08, 0.08, (p1 - p0).Magnitude),
+			CFrame = CFrame.lookAt((p0 + p1) / 2, p1),
+			Color = { 240, 235, 220 },
+			Material = "Fabric",
+			CanCollide = false,
+			CastShadow = false,
+		})
+		local mid = (p0 + p1) / 2
+		local direction = (p1 - p0).Unit
+		local flat = V3(direction.X, 0, direction.Z).Unit
+		lib.part(model, {
+			Class = "WedgePart",
+			Name = "Bandeira",
+			Size = V3(0.05, 1.4, 1.2),
+			CFrame = CFrame.lookAt(mid, mid + flat) * CF(0, -0.75, 0) * CFrame.Angles(0, 0, math.pi),
+			Color = colors[(i % #colors) + 1],
+			Material = "Fabric",
+			CanCollide = false,
+			CastShadow = false,
+		})
+	end
+	return model
+end
+
+local function emitter(parent, name, size: any, position, props)
+	local holder = lib.part(parent, {
+		Name = name,
+		Size = size,
+		CFrame = CF(position),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+	})
+	local particles = Instance.new("ParticleEmitter")
+	particles.Shape = Enum.ParticleEmitterShape.Box
+	for key, value in props do
+		particles[key] = value
+	end
+	particles.Parent = holder
+	return holder
+end
+
+local NS, NR, CS = lib.NumberSequence, lib.NumberRange, lib.ColorSequence
+
+local function buildVillageExtras(world)
+	local vila = world:FindFirstChild("Vila")
+	local houses = lib.folder(vila, "Casas")
+	local roofs = { { 165, 60, 45 }, { 60, 85, 135 }, { 70, 115, 70 }, { 120, 75, 50 } }
+	local walls = { { 238, 228, 205 }, { 230, 215, 190 }, { 240, 232, 215 } }
+	local spots = {
+		{ V3(-95, 0, -42), 90 }, { V3(-95, 0, 42), 90 }, { V3(95, 0, -42), -90 }, { V3(95, 0, 42), -90 },
+		{ V3(-42, 0, 96), 0 }, { V3(42, 0, 96), 0 }, { V3(-46, 0, -96), 180 }, { V3(46, 0, -96), 180 },
+	}
+	for i, spot in spots do
+		house(houses, spot[1], spot[2], roofs[(i - 1) % #roofs + 1], walls[(i - 1) % #walls + 1])
+	end
+
+	local market = lib.folder(vila, "Mercado")
+	marketStall(market, V3(-36, 0.5, 30), 90, { 200, 50, 50 }, { 245, 240, 230 }, { { 220, 40, 40 }, { 255, 160, 40 }, { 120, 200, 60 } })
+	marketStall(market, V3(36, 0.5, 30), -90, { 50, 90, 190 }, { 245, 240, 230 }, { { 150, 60, 200 }, { 255, 220, 60 }, { 230, 90, 60 } })
+
+	-- Bandeirinhas da espada da fonte até os postes
+	local colors = { { 220, 50, 50 }, { 255, 205, 60 }, { 60, 120, 220 }, { 70, 180, 90 }, { 240, 240, 240 } }
+	local decor = lib.folder(vila, "Enfeites")
+	for _, corner in { V3(54, 10.3, 54), V3(-54, 10.3, 54), V3(54, 10.3, -54), V3(-54, 10.3, -54) } do
+		bunting(decor, V3(0, 15, 0) + V3(corner.X, 0, corner.Z).Unit * 3, corner, colors)
+	end
+
+	-- Água da fonte
+	emitter(decor, "Jato", V3(1, 1, 1), V3(0, 6, 0), {
+		Color = CS.new(lib.rgb(200, 235, 255)),
+		LightEmission = 0.3,
+		Size = NS.new(0.5, 0.15),
+		Transparency = NS.new(0.2, 1),
+		Lifetime = NR.new(1, 1.4),
+		Speed = NR.new(14, 18),
+		SpreadAngle = lib.Vector2.new(18, 18),
+		Acceleration = V3(0, -30, 0),
+		Rate = 70,
+		EmissionDirection = Enum.NormalId.Top,
+	})
+	for i = 0, 3 do
+		local a = rad(i * 90 + 45)
+		emitter(decor, "JatoBorda", V3(0.5, 0.5, 0.5), V3(math.cos(a) * 10.5, 2.6, math.sin(a) * 10.5), {
+			Color = CS.new(lib.rgb(200, 235, 255)),
+			Size = NS.new(0.35, 0.1),
+			Transparency = NS.new(0.2, 1),
+			Lifetime = NR.new(0.8, 1),
+			Speed = NR.new(9, 11),
+			SpreadAngle = lib.Vector2.new(5, 5),
+			Acceleration = V3(-math.cos(a) * 14, -26, -math.sin(a) * 14),
+			Rate = 30,
+			EmissionDirection = Enum.NormalId.Top,
+		})
+	end
+
+	-- Estandartes nos cantos da praça
+	for _, corner in { V3(57, 0.5, 57), V3(-57, 0.5, 57), V3(57, 0.5, -57), V3(-57, 0.5, -57) } do
+		lib.cylinder(decor, { Name = "Mastro", Color = { 60, 45, 35 }, Material = "Wood" }, corner + V3(0, 9, 0), 18, 0.5)
+		lib.part(decor, { Name = "PontaMastro", Shape = "Ball", Size = V3(1, 1, 1), CFrame = CF(corner + V3(0, 18.4, 0)), Color = { 230, 190, 70 }, Material = "Metal" })
+		lib.part(decor, {
+			Name = "Estandarte",
+			Size = V3(0.15, 7, 3.4),
+			CFrame = CF(corner + V3(0, 13.5, 0)) * CFrame.Angles(0, math.atan2(-corner.X, -corner.Z) + rad(90), 0) * CF(0, 0, 1.9),
+			Color = { 170, 30, 40 },
+			Material = "Fabric",
+		})
+	end
+end
+
+local function buildLake(world)
+	local lake = terrainData.Lake
+	local folder = lib.folder(world, "Lago")
+	block(lake.X, lake.Z, lake.Radius + 14)
+	-- Píer de madeira saindo da margem norte
+	local startZ = lake.Z - lake.Radius - 6
+	for i = 0, 9 do
+		lib.part(folder, {
+			Name = "Tabua",
+			Size = V3(7, 0.4, 2.6),
+			CFrame = CF(lake.X, 0.9, startZ + i * 2.8) * CFrame.Angles(0, rad(rand(-1.5, 1.5)), 0),
+			Color = pick({ { 140, 100, 60 }, { 130, 92, 55 }, { 150, 108, 66 } }),
+			Material = "WoodPlanks",
+		})
+	end
+	for i = 0, 4 do
+		for _, side in { -1, 1 } do
+			lib.cylinder(folder, { Name = "Estaca", Color = { 90, 65, 40 }, Material = "Wood" }, V3(lake.X + side * 3.6, -1, startZ + i * 7), 6, 0.6)
+		end
+	end
+	local post = lib.cylinder(folder, { Name = "PosteLanterna", Color = { 60, 45, 35 }, Material = "Wood" }, V3(lake.X + 3, 3.5, startZ + 26), 5, 0.4)
+	post.Name = "PosteLanterna"
+	local lantern = lib.part(folder, { Name = "Lanterna", Size = V3(0.9, 1.1, 0.9), CFrame = CF(lake.X + 3, 6.5, startZ + 26), Color = { 255, 200, 120 }, Material = "Neon", Tags = { "NightLight" } })
+	lib.light(lantern, { Color = lib.rgb(255, 190, 110), Range = 18, Brightness = 1.4 }, { "NightLight" })
+	-- Barquinho
+	local boat = lib.model(folder, "Barco")
+	local boatBase = CF(lake.X + 12, 0.4, lake.Z - 6) * CFrame.Angles(0, rad(30), 0)
+	lib.part(boat, { Name = "Fundo", Size = V3(3.4, 0.5, 8), CFrame = boatBase, Color = { 120, 80, 45 }, Material = "WoodPlanks" })
+	for _, side in { -1, 1 } do
+		lib.part(boat, { Name = "Lateral", Size = V3(0.4, 1.2, 8), CFrame = boatBase * CF(side * 1.8, 0.6, 0), Color = { 140, 95, 55 }, Material = "WoodPlanks" })
+	end
+	lib.part(boat, { Class = "WedgePart", Name = "Proa", Size = V3(3.4, 1.2, 2.5), CFrame = boatBase * CF(0, 0.6, -5.2) * CFrame.Angles(0, math.pi, 0), Color = { 140, 95, 55 }, Material = "WoodPlanks" })
+	lib.part(boat, { Name = "Banco", Size = V3(3.2, 0.3, 1.2), CFrame = boatBase * CF(0, 0.8, 0.5), Color = { 100, 65, 40 }, Material = "Wood" })
+	-- Juncos e pedras na margem
+	for i = 0, 23 do
+		local a = rad(i * 15 + rand(-5, 5))
+		local d = lake.Radius + rand(1, 5)
+		local x, z = lake.X + math.cos(a) * d, lake.Z + math.sin(a) * d
+		if math.abs(x - lake.X) > 6 or z > lake.Z then
+			if i % 3 == 0 then
+				rock(folder, V3(x, -0.3, z), rand(1.5, 3))
+			else
+				for k = 0, 2 do
+					lib.part(folder, {
+						Name = "Junco",
+						Size = V3(0.25, rand(2.5, 4), 0.25),
+						CFrame = CF(x + rand(-1, 1), 1.2, z + rand(-1, 1)) * CFrame.Angles(rad(rand(-12, 12)), 0, rad(rand(-12, 12))),
+						Color = { 90, 130, 60 },
+						Material = "Grass",
+						CanCollide = false,
+					})
+				end
+			end
+		end
+	end
+end
+
+-- Partículas de ambiente: vagalumes, brasas, névoa
+local function buildAmbience(world)
+	local folder = lib.folder(world, "Ambiente")
+	for _, position in { V3(200, 6, -40), V3(240, 6, 40), V3(290, 6, -60), V3(300, 6, 80), V3(180, 6, 120), V3(330, 6, -130), V3(220, 6, -140), V3(350, 6, 120) } do
+		emitter(folder, "Vagalumes", V3(60, 10, 60), position, {
+			Color = CS.new(lib.rgb(220, 255, 120)),
+			LightEmission = 1,
+			Size = NS.new(0.22),
+			Transparency = NS.new({ lib.NumberSequenceKeypoint.new(0, 1), lib.NumberSequenceKeypoint.new(0.3, 0), lib.NumberSequenceKeypoint.new(0.7, 0.1), lib.NumberSequenceKeypoint.new(1, 1) }),
+			Lifetime = NR.new(4, 7),
+			Speed = NR.new(0.4, 1.2),
+			SpreadAngle = lib.Vector2.new(180, 180),
+			Rate = 6,
+			RotSpeed = NR.new(-20, 20),
+		})
+	end
+	emitter(folder, "Brasas", V3(80, 2, 80), V3(-265, 2, 0), {
+		Color = CS.new(lib.rgb(255, 120, 40), lib.rgb(255, 40, 40)),
+		LightEmission = 1,
+		Size = NS.new(0.25, 0),
+		Transparency = NS.new(0, 1),
+		Lifetime = NR.new(3, 5),
+		Speed = NR.new(3, 6),
+		SpreadAngle = lib.Vector2.new(25, 25),
+		EmissionDirection = Enum.NormalId.Top,
+		Rate = 22,
+	})
+	emitter(folder, "Nevoa", V3(110, 2, 110), V3(-265, 3, 0), {
+		Texture = "rbxasset://textures/particles/smoke_main.dds",
+		Color = CS.new(lib.rgb(90, 50, 110)),
+		Size = NS.new(10, 18),
+		Transparency = NS.new({ lib.NumberSequenceKeypoint.new(0, 1), lib.NumberSequenceKeypoint.new(0.5, 0.85), lib.NumberSequenceKeypoint.new(1, 1) }),
+		Lifetime = NR.new(8, 12),
+		Speed = NR.new(0.5, 1.5),
+		SpreadAngle = lib.Vector2.new(180, 10),
+		Rate = 4,
+		RotSpeed = NR.new(-10, 10),
+	})
+	emitter(folder, "Petalas", V3(120, 4, 120), V3(0, 24, 0), {
+		Color = CS.new(lib.rgb(255, 190, 210), lib.rgb(255, 240, 245)),
+		Size = NS.new(0.3),
+		Lifetime = NR.new(6, 9),
+		Speed = NR.new(0, 0.5),
+		Acceleration = V3(1.5, -2.5, 0.8),
+		SpreadAngle = lib.Vector2.new(180, 180),
+		RotSpeed = NR.new(-60, 60),
+		Rotation = NR.new(0, 360),
+		Rate = 8,
+	})
 end
 
 --------------------------------------------------------------------------
@@ -1156,7 +1629,12 @@ function map.build(game)
 	buildArena(world, server)
 	buildForest(world, server)
 	buildRuins(world, server)
+	buildVillageExtras(world)
+	buildLake(world)
+	generateRelief()
 	buildFields(world)
+	buildAmbience(world)
+	return terrainModule()
 end
 
 return map

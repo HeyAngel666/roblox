@@ -10,6 +10,7 @@ local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 
@@ -60,6 +61,39 @@ local function setTorches(lit: boolean)
 	end
 end
 
+-- Cor do céu/ambiente conforme a hora (amanhecer, dia, pôr do sol, noite)
+local MOODS = {
+	{ Hour = 5.5, Tint = Color3.fromRGB(190, 200, 255), Ambient = Color3.fromRGB(60, 65, 95) },
+	{ Hour = 7, Tint = Color3.fromRGB(255, 220, 190), Ambient = Color3.fromRGB(95, 85, 85) },
+	{ Hour = 9, Tint = Color3.fromRGB(255, 248, 240), Ambient = Color3.fromRGB(135, 135, 150) },
+	{ Hour = 16.5, Tint = Color3.fromRGB(255, 248, 240), Ambient = Color3.fromRGB(135, 135, 150) },
+	{ Hour = 18, Tint = Color3.fromRGB(255, 200, 160), Ambient = Color3.fromRGB(120, 95, 95) },
+	{ Hour = 19.5, Tint = Color3.fromRGB(190, 200, 255), Ambient = Color3.fromRGB(60, 65, 95) },
+}
+
+local function moodAt(hour: number)
+	if hour < MOODS[1].Hour or hour >= MOODS[#MOODS].Hour then
+		return MOODS[#MOODS].Tint, MOODS[#MOODS].Ambient
+	end
+	for i = 1, #MOODS - 1 do
+		local a, b = MOODS[i], MOODS[i + 1]
+		if hour >= a.Hour and hour < b.Hour then
+			local alpha = (hour - a.Hour) / (b.Hour - a.Hour)
+			return a.Tint:Lerp(b.Tint, alpha), a.Ambient:Lerp(b.Ambient, alpha)
+		end
+	end
+	return MOODS[1].Tint, MOODS[1].Ambient
+end
+
+local function applyMood()
+	local tint, ambient = moodAt(Lighting.ClockTime)
+	local correction = Lighting:FindFirstChild("CorDoDia")
+	if correction and correction:IsA("ColorCorrectionEffect") then
+		TweenService:Create(correction, TweenInfo.new(1), { TintColor = tint }):Play()
+	end
+	TweenService:Create(Lighting, TweenInfo.new(1), { OutdoorAmbient = ambient }):Play()
+end
+
 function WorldService.Init()
 	task.spawn(function()
 		while true do
@@ -79,6 +113,7 @@ function WorldService.Init()
 		end
 		Lighting.ClockTime = (Lighting.ClockTime + elapsed * hoursPerSecond) % 24
 		elapsed = 0
+		applyMood()
 		local isNight = Lighting.ClockTime < 6.3 or Lighting.ClockTime > 17.7
 		if isNight ~= wasNight then
 			wasNight = isNight

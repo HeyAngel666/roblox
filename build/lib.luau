@@ -23,6 +23,8 @@ lib.Vector2 = roblox.Vector2
 lib.ColorSequence = roblox.ColorSequence
 lib.NumberSequence = roblox.NumberSequence
 lib.NumberRange = roblox.NumberRange
+lib.ColorSequenceKeypoint = roblox.ColorSequenceKeypoint
+lib.NumberSequenceKeypoint = roblox.NumberSequenceKeypoint
 
 function lib.rgb(r: any, g: number?, b: number?)
 	if type(r) == "table" then

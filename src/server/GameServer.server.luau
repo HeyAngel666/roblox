@@ -8,6 +8,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Services = ServerScriptService:WaitForChild("Services")
 
 local services = {
+	TerrainService = require(Services.TerrainService),
 	DataService = require(Services.DataService),
 	ZoneService = require(Services.ZoneService),
 	CombatService = require(Services.CombatService),
@@ -18,6 +19,7 @@ local services = {
 }
 
 local order = {
+	"TerrainService",
 	"DataService",
 	"ZoneService",
 	"CombatService",

@@ -93,6 +93,7 @@ Config.Elements = {
 Config.Swords = {
 	{
 		Id = "madeira",
+		Rarity = "Comum",
 		Name = "Espada de Madeira",
 		Description = "Toda lenda começa com um pedaço de madeira.",
 		Price = 0,
@@ -119,6 +120,7 @@ Config.Swords = {
 	},
 	{
 		Id = "ferro",
+		Rarity = "Comum",
 		Name = "Espada de Ferro",
 		Description = "Forjada na vila. Confiável e resistente.",
 		Price = 250,
@@ -145,6 +147,7 @@ Config.Swords = {
 	},
 	{
 		Id = "fogo",
+		Rarity = "Raro",
 		Name = "Lâmina de Fogo",
 		Description = "Queima o inimigo por alguns segundos.",
 		Price = 900,
@@ -173,6 +176,7 @@ Config.Swords = {
 	},
 	{
 		Id = "gelo",
+		Rarity = "Raro",
 		Name = "Presa de Gelo",
 		Description = "Congela e deixa o inimigo lento.",
 		Price = 1500,
@@ -201,6 +205,7 @@ Config.Swords = {
 	},
 	{
 		Id = "sombria",
+		Rarity = "Épico",
 		Name = "Katana Sombria",
 		Description = "Rápida. Rouba a vida de quem corta.",
 		Price = 2500,
@@ -229,6 +234,7 @@ Config.Swords = {
 	},
 	{
 		Id = "celestial",
+		Rarity = "Lendário",
 		Name = "Excalibur Celestial",
 		Description = "Raios saltam entre os inimigos.",
 		Price = 6000,
@@ -257,6 +263,7 @@ Config.Swords = {
 	},
 	{
 		Id = "reicaido",
+		Rarity = "Mítico",
 		Name = "Lâmina do Rei Caído",
 		Description = "Só cai do Rei Caído. Atravessa bloqueios e executa inimigos fracos.",
 		Price = nil,
